@@ -18,7 +18,9 @@ class ProductsController extends Controller
     {
         $products = Products::all();
 
-        return response()->json($products);
+        return response()->json([
+            'Products' => $products
+        ]);
     }
 
     /**
@@ -40,7 +42,9 @@ class ProductsController extends Controller
         // Lưu hình ảnh vào thư mục public/upload
         $imageHash = substr(md5(uniqid()), 0, 2);
         $imageName = date('Ymd') . $imageHash . '.' . $request->file('avatar')->getClientOriginalExtension();
-        $path = $request->avatar->storeAs('upload/' . date('Y') . '/' . date('m') . '/' . date('d'), $imageName, 'public');
+        $request->avatar->move(public_path('upload/' . date('Y') . '/' . date('m') . '/' . date('d')), $imageName);
+        $imagePath = 'upload/' . date('Y') . '/' . date('m') . '/' . date('d') . '/' . $imageName;
+        $imageUrl = url($imagePath);
 
         // Tạo sản phẩm mới trong database
         $product = new Products;
@@ -48,10 +52,17 @@ class ProductsController extends Controller
         $product->name = $validatedData['name'];
         $product->stock = $validatedData['stock'];
         $product->avatar = $imageName;
+        $product->$imageUrl;
+        // $product->path = 'upload/' . date('Y') . '/' . date('m') . '/' . date('d');  
         $product->save();
         // Xóa ảnh đã tải lên nếu không lưu vào thư mục
-        Storage::disk('public')->delete($path);
-        return response()->json($product);
+        // Storage::disk('public')->delete($path);
+
+        return response()->json([
+            'New product' => $product,
+            'path'        => $imagePath,
+            'Url_Image'   => $imageUrl
+        ]);
     }
 
     // $imageHash = substr(md5(uniqid()), 0, 2);
@@ -77,17 +88,7 @@ class ProductsController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    // public function update(Request $request, $id)
-    // {
-    //     $product = Products::find($id);
-    //     $product->name = $request->input('name');
-    //     $product->stock = $request->input('stock');
-    //     $product->sku = $request->input('sku');
-    //     $product->avatar = $request->input('avatar');
-    //     $product->save();
 
-    //     return response()->json($product);
-    // }
     public function update(Request $request, $id)
     {
         // Kiểm tra dữ liệu đầu vào
@@ -95,7 +96,7 @@ class ProductsController extends Controller
             'sku' => 'required',
             'name' => 'required',
             'stock' => 'required|integer',
-            'avatar' => 'nullable|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'avatar' => 'required|mimes:jpeg,png,jpg,gif,svg|max:10240',
         ]);
 
         $product = Products::find($id);
@@ -105,22 +106,30 @@ class ProductsController extends Controller
 
         // Cập nhật hình ảnh mới nếu có
         if ($request->hasFile('avatar')) {
-            // Xóa hình ảnh cũ
-            if (file_exists(public_path('images/' . $product->avatar))) {
-                unlink(public_path('images/' . $product->avatar));
+            if ($product->avatar) {
+                $imagePath = public_path('upload/' . date('Y', strtotime($product->created_at)) . '/' . date('m', strtotime($product->created_at)) . '/' . date('d', strtotime($product->created_at)) . '/' . $product->avatar);
+                if (file_exists($imagePath)) {
+                    unlink($imagePath);
+                }
             }
 
-            // Lưu hình ảnh mới
-            $imageName = time() . '.' . $request->avatar->extension();
-            $request->avatar->move(public_path('images'), $imageName);
+            $imageHash = substr(md5(uniqid()), 0, 2);
+            $imageName = date('Ymd') . $imageHash . '.' . $request->file('avatar')->getClientOriginalExtension();
+            $request->file('avatar')->move(public_path('upload/' . date('Y', strtotime($product->created_at)) . '/' . date('m', strtotime($product->created_at)) . '/' . date('d', strtotime($product->created_at))), $imageName);
             $product->avatar = $imageName;
+            $imagePath = 'upload/' . date('Y') . '/' . date('m') . '/' . date('d') . '/' . $imageName;
+            $imageUrl = url($imagePath);
         }
 
         $product->save();
-
-
-        return response()->json($product);
+        
+        return  response()->json([
+            'New product' => $product,
+            'path'        => $imagePath,
+            'Url_Image'   => $imageUrl         
+        ]);
     }
+
     /**
      * Xóa sản phẩm khỏi database.
      *
@@ -129,9 +138,17 @@ class ProductsController extends Controller
      */
     public function destroy($id)
     {
-        $product = Products::find($id);
+        $product = Products::findOrFail($id);
+
+        if ($product->avatar) {
+            $imagePath = public_path('upload/' . date('Y', strtotime($product->created_at)) . '/' . date('m', strtotime($product->created_at)) . '/' . date('d', strtotime($product->created_at)) . '/' . $product->avatar);
+            if (file_exists($imagePath)) {
+                unlink($imagePath);
+            }
+        }
+
         $product->delete();
 
-        return response()->json(['message' => 'Product deleted successfully']);
+        return response()->json(['message' => 'Products deleted successfully']);
     }
 }
